@@ -4,119 +4,132 @@ import matplotlib.pyplot as plt
 from datetime import datetime
 
 
-def recupererDonneesE(S, d, h1, m1, h2, m2):
+URL_API = "https://******/capteurs"
 
-    g = requests.get(
-        f"https://applis.iut.univ-paris-diderot.fr/capteurs/{S}/date/{d}"
-    )
 
-    g.raise_for_status()
-    g = g.json()
+def recupererDonnees(S, d, h1, m1, h2, m2):
 
-    H1 = int((h1 * 3600 + m1 * 60) / 120)
-    H2 = int((h2 * 3600 + m2 * 60) / 120)
+    if not isinstance(S, str):
+        raise TypeError("Le nom de la salle doit être un texte.")
 
-    H = []
-    T = []
-    hum = []
-    CO2 = []
-    Ec = []
+    if not isinstance(d, str):
+        raise TypeError("La date doit être un texte.")
 
-    DE1 = datetime.strptime(
-        g[0]["Timestamp"],
-        "%Y-%m-%d %H:%M:%S"
-    )
+    if not all(isinstance(x, int) for x in [h1, m1, h2, m2]):
+        raise TypeError("Les heures et minutes doivent être des nombres entiers.")
 
-    DE2 = datetime.strptime(
-        g[1]["Timestamp"],
-        "%Y-%m-%d %H:%M:%S"
-    )
+    if not 0 <= h1 <= 23 or not 0 <= h2 <= 23:
+        raise ValueError("Les heures doivent être comprises entre 0 et 23.")
 
-    HE1 = DE1.hour + DE1.minute / 60 + DE1.second / 3600
-    HE2 = DE2.hour + DE2.minute / 60 + DE2.second / 3600
+    if not 0 <= m1 <= 59 or not 0 <= m2 <= 59:
+        raise ValueError("Les minutes doivent être comprises entre 0 et 59.")
 
-    if HE2 - HE1 < 0.025:
+    debut = h1 * 60 + m1
+    fin = h2 * 60 + m2
 
-        for i in range(2 * H1, 2 * (H2 - 2)):
+    if debut > fin:
+        debut, fin = fin, debut
 
-            if i < len(g):
+    url = f"{URL_API}/{S}/date/{d}"
 
-                e = g[i]
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        donnees = response.json()
+    except requests.RequestException as e:
+        raise ConnectionError(f"Impossible de récupérer les données : {e}")
 
-                D = datetime.strptime(
-                    e["Timestamp"],
-                    "%Y-%m-%d %H:%M:%S"
-                )
+    if not donnees:
+        raise ValueError(f"Aucune donnée trouvée pour {S} le {d}.")
 
-                H.append(
-                    D.hour + D.minute / 60 + D.second / 3600
-                )
+    heures = []
+    temperatures = []
+    humidites = []
+    co2 = []
+    eclairement = []
 
-                T.append(float(e["Temperature"]))
-                hum.append(float(e["Humidite"]))
+    for element in donnees:
 
-    else:
+        try:
+            date_mesure = datetime.strptime(
+                element["Timestamp"],
+                "%Y-%m-%d %H:%M:%S"
+            )
+        except (KeyError, ValueError):
+            continue
 
-        for i in range(H1, H2 - 2):
+        minute_mesure = date_mesure.hour * 60 + date_mesure.minute
 
-            if i < len(g):
+        if debut <= minute_mesure <= fin:
 
-                e = g[i]
+            heures.append(
+                date_mesure.hour
+                + date_mesure.minute / 60
+                + date_mesure.second / 3600
+            )
 
-                D = datetime.strptime(
-                    e["Timestamp"],
-                    "%Y-%m-%d %H:%M:%S"
-                )
+            temperatures.append(float(element["Temperature"]))
+            humidites.append(float(element["Humidite"]))
 
-                H.append(
-                    D.hour + D.minute / 60 + D.second / 3600
-                )
+            if "CO2" in element:
+                co2.append(float(element["CO2"]))
 
-                T.append(float(e["Temperature"]))
-                hum.append(float(e["Humidite"]))
+            if "Eclairement" in element:
+                eclairement.append(float(element["Eclairement"]))
 
-    if len(g[0]) == 6:
+    if not heures:
+        raise ValueError(
+            f"Aucune donnée trouvée entre {h1}h{m1} et {h2}h{m2}."
+        )
 
-        for j in range(H1, H2 + 1):
+    nom_fichier = f"{S}({d}).csv"
 
-            if j < len(g):
+    with open(nom_fichier, "w", encoding="utf-8") as fichier:
 
-                f = g[j]
+        if co2 and eclairement:
 
-                CO2.append(float(f["CO2"]))
-                Ec.append(float(f["Eclairement"]))
+            fichier.write(
+                "heure,Temperature,Humidite,CO2,Eclairement\n"
+            )
 
-    nom_fichier = f"{S}-{d}.csv"
+            taille = min(
+                len(heures),
+                len(temperatures),
+                len(humidites),
+                len(co2),
+                len(eclairement)
+            )
 
-    with open(nom_fichier, "w") as f:
+            for i in range(taille):
 
-        if len(g[0]) == 4:
-
-            f.write("#heure,Temperature,Humidite\n")
-
-            for i in range(len(H)):
-
-                f.write(
-                    f"{H[i]},{T[i]},{hum[i]}\n"
+                fichier.write(
+                    f"{heures[i]},"
+                    f"{temperatures[i]},"
+                    f"{humidites[i]},"
+                    f"{co2[i]},"
+                    f"{eclairement[i]}\n"
                 )
 
         else:
 
-            f.write(
-                "heure,Temperature,Humidite,CO2,Eclairement\n"
+            fichier.write(
+                "heure,Temperature,Humidite\n"
             )
 
-            for i in range(len(H)):
+            for i in range(len(heures)):
 
-                f.write(
-                    f"{H[i]},{T[i]},{hum[i]},"
-                    f"{CO2[i]},{Ec[i]}\n"
+                fichier.write(
+                    f"{heures[i]},"
+                    f"{temperatures[i]},"
+                    f"{humidites[i]}\n"
                 )
 
-    print("Le fichier a été créé")
+    print(f"Fichier créé : {nom_fichier}")
+
+    return nom_fichier
 
 
-def afficher_graphique(
+def afficherGraphique(
     salles,
     date,
     heure1,
@@ -126,61 +139,62 @@ def afficher_graphique(
     grandeur
 ):
 
-    plt.figure()
+    grandeurs = [
+        "Temperature",
+        "Humidite",
+        "CO2",
+        "Eclairement"
+    ]
+
+    if grandeur not in grandeurs:
+        raise ValueError(
+            "Grandeur inconnue. Choisissez : "
+            "Temperature, Humidite, CO2 ou Eclairement."
+        )
+
+    if not isinstance(salles, list):
+        raise TypeError(
+            "Les salles doivent être données sous forme de liste."
+        )
+
+    plt.figure(figsize=(10, 6))
+
+    nombre_courbes = 0
+
+    colonnes = {
+        "Temperature": 1,
+        "Humidite": 2,
+        "CO2": 3,
+        "Eclairement": 4
+    }
 
     for salle in salles:
 
-        nom_fichier_csv = f"{salle}-{date}.csv"
+        nom_fichier = f"{salle}({date}).csv"
 
         try:
-
             data = np.loadtxt(
-                nom_fichier_csv,
+                nom_fichier,
                 delimiter=",",
                 skiprows=1
             )
-
         except FileNotFoundError:
+            print(f"Fichier introuvable : {nom_fichier}")
+            continue
 
+        if data.ndim == 1:
+            data = data.reshape(1, -1)
+
+        colonne = colonnes[grandeur]
+
+        if data.shape[1] <= colonne:
             print(
-                f"Erreur : Le fichier {nom_fichier_csv} est introuvable."
+                f"{salle} ne possède pas la grandeur {grandeur}."
             )
-
             continue
 
         heures = data[:, 0]
-
-        if grandeur == "Temperature":
-
-            valeurs = data[:, 1]
-
-        elif grandeur == "Humidite":
-
-            valeurs = data[:, 2]
-
-        elif grandeur == "CO2":
-
-            if data.shape[1] < 4:
-                print(f"Pas de CO2 pour {salle}.")
-                continue
-
-            valeurs = data[:, 3]
-
-        elif grandeur == "Eclairement":
-
-            if data.shape[1] < 5:
-                print(f"Pas d'éclairement pour {salle}.")
-                continue
-
-            valeurs = data[:, 4]
-
-        else:
-
-            print(
-                f"Erreur : La grandeur '{grandeur}' n'est pas reconnue."
-            )
-
-            continue
+        valeurs = data[:, colonne]
 
         heure_debut = heure1 + min1 / 60
         heure_fin = heure2 + min2 / 60
@@ -190,37 +204,55 @@ def afficher_graphique(
             & (heures <= heure_fin)
         )
 
-        plt.plot(
-            heures[filtre],
-            valeurs[filtre],
-            label=salle
+        if np.any(filtre):
+
+            plt.plot(
+                heures[filtre],
+                valeurs[filtre],
+                label=f"{salle} - {grandeur}"
+            )
+
+            nombre_courbes += 1
+
+    if nombre_courbes == 0:
+        plt.close()
+        raise ValueError(
+            "Aucune donnée disponible pour créer le graphique."
         )
 
     plt.xlabel("Heure")
     plt.ylabel(grandeur)
 
     plt.title(
-        f"{grandeur} pour {date} "
+        f"{grandeur} pour plusieurs salles le {date} "
         f"entre {heure1}h{min1} et {heure2}h{min2}"
     )
 
     plt.legend()
     plt.grid()
 
-    nom_fichier_image = (
-        f"salles_{grandeur}_{date}_"
+    nom_salles = "_".join(salles)
+
+    nom_image = (
+        f"{nom_salles}_{grandeur}_{date}_"
         f"{heure1}h{min1}-{heure2}h{min2}.png"
     )
 
-    plt.savefig(nom_fichier_image)
-    plt.close()
-
-    print(
-        f"Graphique sauvegardé : {nom_fichier_image}"
+    plt.savefig(
+        nom_image,
+        dpi=150,
+        bbox_inches="tight"
     )
 
+    plt.show()
+    plt.close()
 
-def isolation_ventilation(
+    print(f"Graphique sauvegardé : {nom_image}")
+
+    return nom_image
+
+
+def isolationVentilation(
     salles,
     date,
     heure1,
@@ -229,44 +261,37 @@ def isolation_ventilation(
     min2
 ):
 
-    coefficients_iso = []
-    coefficients_vent = []
+    resultats = []
+
+    heure_debut = heure1 + min1 / 60
+    heure_fin = heure2 + min2 / 60
 
     for salle in salles:
 
-        nom_fichier_csv = f"{salle}-{date}.csv"
+        nom_fichier = f"{salle}({date}).csv"
 
         try:
-
             data = np.loadtxt(
-                nom_fichier_csv,
+                nom_fichier,
                 delimiter=",",
                 skiprows=1
             )
-
         except FileNotFoundError:
+            print(f"Fichier introuvable : {nom_fichier}")
+            continue
 
+        if data.ndim == 1:
+            data = data.reshape(1, -1)
+
+        if data.shape[1] < 4:
             print(
-                f"Erreur : Le fichier {nom_fichier_csv} est introuvable."
+                f"{salle} ne possède pas de capteur CO2."
             )
-
             continue
 
         heures = data[:, 0]
-        temp = data[:, 1]
-
-        if data.shape[1] < 4:
-
-            print(
-                f"Attention : Pas de capteur CO2 pour la salle {salle}."
-            )
-
-            continue
-
+        temperature = data[:, 1]
         co2 = data[:, 3]
-
-        heure_debut = heure1 + min1 / 60
-        heure_fin = heure2 + min2 / 60
 
         filtre = (
             (heures >= heure_debut)
@@ -274,92 +299,298 @@ def isolation_ventilation(
         )
 
         heures_filtrees = heures[filtre]
-        temp_filtrees = temp[filtre]
-        co2_filtrees = co2[filtre]
+        temperatures_filtrees = temperature[filtre]
+        co2_filtres = co2[filtre]
 
-        if len(heures_filtrees) > 1:
-
-            pente_iso = np.polyfit(
-                heures_filtrees,
-                temp_filtrees,
-                1
-            )[0]
-
-            pente_vent = np.polyfit(
-                heures_filtrees,
-                co2_filtrees,
-                1
-            )[0]
-
-            coefficients_iso.append(
-                (salle, pente_iso)
+        if len(heures_filtrees) < 2:
+            print(
+                f"Pas assez de données pour {salle}."
             )
+            continue
 
-            coefficients_vent.append(
-                (salle, pente_vent)
+        pente_temperature = np.polyfit(
+            heures_filtrees,
+            temperatures_filtrees,
+            1
+        )[0]
+
+        pente_co2 = np.polyfit(
+            heures_filtrees,
+            co2_filtres,
+            1
+        )[0]
+
+        resultats.append(
+            (
+                salle,
+                pente_temperature,
+                pente_co2
             )
+        )
 
-    coefficients_iso.sort(
+    if not resultats:
+        raise ValueError(
+            "Aucune salle ne possède suffisamment de données."
+        )
+
+    classement_isolation = sorted(
+        resultats,
         key=lambda x: x[1]
     )
 
-    coefficients_vent.sort(
-        key=lambda x: x[1]
+    classement_ventilation = sorted(
+        resultats,
+        key=lambda x: x[2]
     )
 
-    pentes_iso = [
-        pente for salle, pente in coefficients_iso
-    ]
+    print()
+    print("CLASSEMENT ISOLATION")
+    print()
 
-    pentes_vent = [
-        pente for salle, pente in coefficients_vent
-    ]
+    for salle, pente_temperature, pente_co2 in classement_isolation:
 
-    if len(pentes_iso) >= 2 and len(pentes_vent) >= 2:
-
-        std_iso = np.std(
-            pentes_iso,
-            ddof=1
+        print(
+            f"{salle} : "
+            f"pente température = "
+            f"{pente_temperature:.3f}"
         )
 
-        std_vent = np.std(
-            pentes_vent,
-            ddof=1
+    print()
+    print("CLASSEMENT VENTILATION")
+    print()
+
+    for salle, pente_temperature, pente_co2 in classement_ventilation:
+
+        print(
+            f"{salle} : "
+            f"pente CO2 = "
+            f"{pente_co2:.3f}"
         )
 
-        if std_iso != 0 and std_vent != 0:
+    if len(resultats) >= 2:
 
-            cov = np.cov(
-                pentes_iso,
-                pentes_vent,
-                ddof=1
+        pentes_temperature = np.array(
+            [x[1] for x in resultats]
+        )
+
+        pentes_co2 = np.array(
+            [x[2] for x in resultats]
+        )
+
+        if (
+            np.std(pentes_temperature) != 0
+            and np.std(pentes_co2) != 0
+        ):
+
+            correlation = np.corrcoef(
+                pentes_temperature,
+                pentes_co2
             )[0, 1]
 
-            corr_coeff = cov / (
-                std_iso * std_vent
+            print()
+            print(
+                f"Corrélation isolation / ventilation : "
+                f"{correlation:.2f}"
             )
+
+    return resultats
+
+
+def moyenneGrandeur(
+    fichier,
+    grandeur,
+    periode
+):
+
+    grandeurs = {
+        "Temperature": 1,
+        "Humidite": 2,
+        "CO2": 3,
+        "Eclairement": 4
+    }
+
+    periodes = [
+        "Nuit",
+        "Journee avec occupation",
+        "Journee sans occupation"
+    ]
+
+    if grandeur not in grandeurs:
+        raise ValueError(
+            "Grandeur inconnue."
+        )
+
+    if periode not in periodes:
+        raise ValueError(
+            "Période inconnue."
+        )
+
+    data = np.loadtxt(
+        fichier,
+        delimiter=",",
+        skiprows=1
+    )
+
+    if data.ndim == 1:
+        data = data.reshape(1, -1)
+
+    colonne = grandeurs[grandeur]
+
+    if data.shape[1] <= colonne:
+        raise ValueError(
+            f"La grandeur {grandeur} n'est pas disponible."
+        )
+
+    heures = data[:, 0]
+    valeurs = data[:, colonne]
+
+    selection = []
+
+    if periode == "Nuit":
+
+        filtre = (
+            (heures < 8)
+            | (heures >= 18)
+        )
+
+        selection = valeurs[filtre]
+
+    elif periode == "Journee avec occupation":
+
+        filtre = (
+            (heures >= 8)
+            & (heures < 18)
+        )
+
+        selection = valeurs[filtre]
+
+    elif periode == "Journee sans occupation":
+
+        filtre = (
+            (heures < 8)
+            | (heures >= 18)
+        )
+
+        selection = valeurs[filtre]
+
+    if len(selection) == 0:
+        raise ValueError(
+            "Aucune donnée pour cette période."
+        )
+
+    return round(float(np.mean(selection)), 2)
+
+
+def natureCapteurSalle(salles, date):
+
+    if not isinstance(salles, list):
+        raise TypeError(
+            "Les salles doivent être données sous forme de liste."
+        )
+
+    for salle in salles:
+
+        url = f"{URL_API}/{salle}/date/{date}"
+
+        try:
+            response = requests.get(
+                url,
+                timeout=10
+            )
+
+            response.raise_for_status()
+
+            donnees = response.json()
+
+        except requests.RequestException as e:
 
             print(
-                f"\nCorrélation entre isolation et ventilation : "
-                f"{corr_coeff:.2f}"
+                f"Erreur pour {salle} : {e}"
             )
 
-    print(
-        "\nClassement des salles par isolation (Température) :"
-    )
+            continue
 
-    for salle, pente in coefficients_iso:
+        if not donnees:
+
+            print(
+                f"Aucune donnée pour {salle}."
+            )
+
+            continue
+
+        capteurs = []
+
+        if "Temperature" in donnees[0]:
+            capteurs.append("Temperature")
+
+        if "Humidite" in donnees[0]:
+            capteurs.append("Humidite")
+
+        if "CO2" in donnees[0]:
+            capteurs.append("CO2")
+
+        if "Eclairement" in donnees[0]:
+            capteurs.append("Eclairement")
 
         print(
-            f"{salle}: Pente = {pente:.2f}"
+            f"{salle} possède {len(capteurs)} capteurs : "
+            f"{', '.join(capteurs)}"
         )
 
-    print(
-        "\nClassement des salles par ventilation (CO2) :"
+
+def regulariteMesures(
+    fichier,
+    seuil_minutes=3
+):
+
+    data = np.loadtxt(
+        fichier,
+        delimiter=",",
+        skiprows=1
     )
 
-    for salle, pente in coefficients_vent:
+    if data.ndim == 1:
+        data = data.reshape(1, -1)
+
+    heures = data[:, 0]
+
+    interruptions = []
+
+    seuil = seuil_minutes / 60
+
+    for i in range(1, len(heures)):
+
+        difference = heures[i] - heures[i - 1]
+
+        if difference > seuil:
+
+            interruptions.append(
+                (
+                    heures[i - 1],
+                    heures[i],
+                    difference * 60
+                )
+            )
+
+    if not interruptions:
 
         print(
-            f"{salle}: Pente = {pente:.2f}"
+            "Aucune absence de données supérieure "
+            f"à {seuil_minutes} minutes."
         )
+
+    else:
+
+        print(
+            f"{len(interruptions)} interruption(s) détectée(s) :"
+        )
+
+        for debut, fin, duree in interruptions:
+
+            print(
+                f"Entre {debut:.2f}h et "
+                f"{fin:.2f}h : "
+                f"{duree:.1f} minutes"
+            )
+
+    return interruptions

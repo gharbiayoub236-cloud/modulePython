@@ -24,22 +24,7 @@ Le projet utilise une API pour récupérer les données de différentes salles, 
 - Requests
 - Jupyter Notebook
 
-## Exemple
-
-### Données récupérées
-
-![Données CSV](images/csv.png)
-
-### Graphique
-
-![Graphique température](images/graphique.png)
-
-### Analyse
-
-![Analyse](images/analyse.png)
-
-## Installation
-
-```bash
-pip install requests numpy matplotlib<img width="742" height="777" alt="csvmodule" src="https://github.com/user-attachments/assets/07b96739-5a7c-43c5-a42c-21f7baac76ae" />
-<img width="742" height="777" alt="csvmodule" src="https://github.com/user-attachments/assets/997fb5e0-3d2c-4f76-a061-62e91e37c252" />
+<img width="1097" height="727" alt="graph" src="https://github.com/user-attachments/assets/eeae3926-b7bf-4b3a-b436-c7f4118b9187" />
+<img width="1126" height="672" alt="capteur" src="https://github.com/user-attachments/assets/f3d227b7-0129-48ce-b2c3-1599f2bfb3a7" />
+<img width="1122" height="670" alt="csvrecup" src="https://github.com/user-attachments/assets/c7ff08f4-041b-4f2d-a198-550d9c7404ee" />
+<img width="742" height="777" alt="csvmodule" src="https://github.com/user-attachments/assets/d651f108-fbd5-44f2-9bf7-8a5ba6d69fa8" />
